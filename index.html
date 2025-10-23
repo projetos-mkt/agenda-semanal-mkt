@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard Semanal 2025</title>
+  <style>
+    :root { --gold:#b8860b; --soft:#fafafa; --line:#e6e6e6; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#fff; color:#222; margin:0; padding:20px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    h1 { margin:0; color: var(--gold); font-size: clamp(20px, 3vw, 28px); }
+    .status { display:flex; align-items:center; gap:8px; font-size:12px; color:#666; }
+    .dot { width:10px; height:10px; border-radius:50%; background:#bbb; }
+    .dot.saving { background:#ffb703; }
+    .dot.saved { background:#22c55e; }
+    .dot.error { background:#ef4444; }
+
+    .container { display:flex; flex-direction:column; gap:18px; }
+    .controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    select, input, button { padding:8px 10px; font-size:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    button.primary { background:var(--gold); color:#000; border:none; font-weight:600; cursor:pointer; transition:.2s; }
+    button.primary:hover { filter:brightness(1.1); }
+
+    .chips { display:flex; flex-wrap:wrap; gap:8px; }
+    .chip { padding:8px 12px; border-radius:20px; background:#f4f4f4; border:1px solid var(--line); cursor:pointer; transition:.15s; }
+    .chip:hover { transform: translateY(-1px); }
+    .chip.active { background:#ffd700; color:#000; border-color:#e7c200; }
+
+    .calendar { display:grid; grid-template-columns: repeat(7, minmax(170px, 1fr)); gap:10px; overflow-x:auto; }
+    .day { border:1px solid var(--line); border-radius:10px; padding:10px; background: var(--soft); min-width:170px; }
+    .day h3 { margin:0 0 6px; font-size:15px; color:var(--gold); }
+    .day ul { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
+    .item { display:flex; align-items:center; justify-content:space-between; gap:8px; background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
+    .item button { border:none; background:transparent; color:#ef4444; cursor:pointer; font-size:14px; }
+    .add-action { display:flex; gap:6px; margin-top:8px; }
+    .add-action input { flex:1; }
+
+    /* ===== Tabela ===== */
+    .table-wrap { width:100%; overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border:1px solid var(--line); padding:8px; text-align:left; vertical-align:top; }
+    th { background:#f9f9f9; color:var(--gold); position:sticky; top:0; }
+
+    /* Mobile: transformar tabela em cartões usando flexbox */
+    @media (max-width: 720px) {
+      thead { display:none; }
+      table, tbody, tr, td { display:block; width:100%; }
+      tbody { display:flex; flex-direction:column; gap:12px; }
+      tr { border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff; }
+      td { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; border:none; border-bottom:1px solid var(--line); padding:10px 12px; }
+      td:last-child { border-bottom:none; }
+      td::before { content: attr(data-label); font-weight:600; color:#555; }
+      td.emp { background:#f9f9f9; font-weight:700; color:#111; }
+    }
+
+    @media (max-width: 1100px) {
+      .calendar { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 720px) {
+      .calendar { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Dashboard Semanal 2025</h1>
+    <div class="status" id="status"><span class="dot" id="statusDot"></span><span id="statusText">Pronto</span></div>
+  </header>
+
+  <div class="container">
+    <div class="controls">
+      <label>
+        <span style="font-size:12px;color:#666;display:block;">Semana</span>
+        <select id="semana"></select>
+      </label>
+      <label>
+        <span style="font-size:12px;color:#666;display:block;">Diretoria</span>
+        <select id="diretoria">
+          <option value="Diretoria Luis">Diretoria Luis</option>
+          <option value="Diretoria Ferrari">Diretoria Ferrari</option>
+          <option value="Diretoria Marketing">Diretoria Marketing</option>
+          <option value="Parcerias">Parcerias</option>
+        </select>
+      </label>
+      <button class="primary" id="btnRecarregar">Recarregar dados</button>
+    </div>
+
+    <div class="chips" id="empreendimentos"></div>
+
+    <div id="calendario"></div>
+
+    <div>
+      <h2 style="color:var(--gold);margin:6px 0;">Quadro Resumo — Semana</h2>
+      <div class="table-wrap">
+        <table id="resumo">
+          <thead>
+            <tr>
+              <th>Empreendimento</th>
+              <th>Segunda</th>
+              <th>Terça</th>
+              <th>Quarta</th>
+              <th>Quinta</th>
+              <th>Sexta</th>
+              <th>Sábado</th>
+              <th>Domingo</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.4.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDCJeeW1PEWSJEAS45Eq84s3iKMRZDfq-w",
+      authDomain: "dashboard-semanal-2025.firebaseapp.com",
+      projectId: "dashboard-semanal-2025",
+      storageBucket: "dashboard-semanal-2025.firebasestorage.app",
+      messagingSenderId: "532157233147",
+      appId: "1:532157233147:web:c7f59a7126cbbc6dc43d5e",
+      measurementId: "G-WSX82FPQWW"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const EMPREENDIMENTOS = ['Quaddra Lorena', 'Zip Brooklin', 'Camino', 'Jeronimo 155', 'UAPÉ', 'Esquina Jardyn', 'Organy'];
+    const dias = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
+
+    let cache = {};
+
+    const selSemana = document.getElementById('semana');
+    const selDiretoria = document.getElementById('diretoria');
+    const chips = document.getElementById('empreendimentos');
+    const calendario = document.getElementById('calendario');
+    const resumo = document.getElementById('resumo').querySelector('tbody');
+    const btnRecarregar = document.getElementById('btnRecarregar');
+    const dot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+
+    function setStatus(state, text) {
+      dot.classList.remove('saving','saved','error');
+      if (state) dot.classList.add(state);
+      statusText.textContent = text || '';
+    }
+
+    const key = (dir, sem, emp) => `${dir}__${sem}__${emp}`;
+
+    async function carregarEmp(dir, sem, emp) {
+      const id = key(dir, sem, emp);
+      const ref = doc(db, 'acoes', id);
+      const snap = await getDoc(ref);
+      const data = snap.exists() ? snap.data() : {};
+      const norm = {};
+      for (let i=0;i<7;i++) norm[i] = Array.isArray(data[i]) ? data[i] : [];
+      cache[dir] ??= {}; cache[dir][sem] ??= {}; cache[dir][sem][emp] = norm;
+      return norm;
+    }
+
+    let saveTimer = null;
+    async function salvarEmp(dir, sem, emp) {
+      setStatus('saving','Salvando...');
+      const id = key(dir, sem, emp);
+      const ref = doc(db, 'acoes', id);
+      const payload = cache?.[dir]?.[sem]?.[emp] || {};
+      try {
+        await setDoc(ref, payload, { merge:false });
+        setStatus('saved','Salvo');
+      } catch (e) {
+        console.error(e);
+        setStatus('error','Erro ao salvar');
+      }
+    }
+
+    function scheduleSave(dir, sem, emp) {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => salvarEmp(dir, sem, emp), 500);
+    }
+
+    function gerarSemanas() {
+      const inicio = new Date();
+      const day = inicio.getDay();
+      const diff = (day === 0 ? -6 : 1 - day);
+      inicio.setDate(inicio.getDate() + diff);
+
+      const fim = new Date('2025-12-31T23:59:59');
+      let atual = new Date(inicio);
+      let cont = 1;
+      while (atual <= fim) {
+        const prox = new Date(atual); prox.setDate(prox.getDate() + 6);
+        const opt = document.createElement('option');
+        opt.value = 'w' + cont;
+        opt.textContent = `${cont}ª Semana (${atual.toLocaleDateString()} - ${prox.toLocaleDateString()})`;
+        selSemana.appendChild(opt);
+        atual.setDate(atual.getDate() + 7);
+        cont++;
+      }
+    }
+
+    function renderChips() {
+      chips.innerHTML = '';
+      EMPREENDIMENTOS.forEach((emp, i) => {
+        const c = document.createElement('div');
+        c.textContent = emp;
+        c.className = 'chip' + (i === 0 ? ' active' : '');
+        c.onclick = async () => {
+          document.querySelectorAll('.chip').forEach(ch => ch.classList.remove('active'));
+          c.classList.add('active');
+          await renderCalendario();
+        };
+        chips.appendChild(c);
+      });
+    }
+
+    async function renderCalendario() {
+      calendario.innerHTML = '';
+      const emp = document.querySelector('.chip.active').textContent;
+      const sem = selSemana.value;
+      const dir = selDiretoria.value;
+
+      if (!cache?.[dir]?.[sem]?.[emp]) {
+        await carregarEmp(dir, sem, emp);
+      }
+
+      const grid = document.createElement('div');
+      grid.className = 'calendar';
+
+      dias.forEach((dia, i) => {
+        const day = document.createElement('div');
+        day.className = 'day';
+        const titulo = document.createElement('h3');
+        titulo.textContent = dia;
+        day.appendChild(titulo);
+
+        const lista = document.createElement('ul');
+        (cache[dir][sem][emp][i] || []).forEach((acao, idx) => {
+          const li = document.createElement('li');
+          li.className = 'item';
+          const span = document.createElement('span');
+          span.textContent = acao;
+          const btn = document.createElement('button');
+          btn.textContent = '×';
+          btn.title = 'Remover';
+          btn.onclick = () => {
+            cache[dir][sem][emp][i].splice(idx,1);
+            scheduleSave(dir, sem, emp);
+            renderCalendario();
+          };
+          li.appendChild(span); li.appendChild(btn);
+          lista.appendChild(li);
+        });
+
+        const add = document.createElement('div');
+        add.className = 'add-action';
+        const input = document.createElement('input');
+        input.placeholder = 'Nova ação';
+        const btnAdd = document.createElement('button');
+        btnAdd.textContent = '+';
+        btnAdd.className = 'primary';
+
+        const addItem = () => {
+          const valor = input.value.trim();
+          if (!valor) return;
+          cache[dir][sem][emp][i] ??= [];
+          cache[dir][sem][emp][i].push(valor);
+          input.value = '';
+          scheduleSave(dir, sem, emp);
+          renderCalendario();
+        };
+
+        btnAdd.onclick = addItem;
+        input.addEventListener('keydown', (e)=>{ if(e.key==='Enter') addItem(); });
+
+        add.appendChild(input);
+        add.appendChild(btnAdd);
+
+        day.appendChild(lista);
+        day.appendChild(add);
+        grid.appendChild(day);
+      });
+
+      calendario.appendChild(grid);
+      renderResumo();
+    }
+
+    function renderResumo() {
+      const sem = selSemana.value;
+      const dir = selDiretoria.value;
+      resumo.innerHTML = '';
+
+      const labels = ['Empreendimento','Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
+
+      EMPREENDIMENTOS.forEach(emp => {
+        const tr = document.createElement('tr');
+
+        // Empreendimento (primeira célula)
+        const tdEmp = document.createElement('td');
+        tdEmp.className = 'emp';
+        tdEmp.setAttribute('data-label', labels[0]);
+        tdEmp.innerHTML = `<strong>${emp}</strong>`;
+        tr.appendChild(tdEmp);
+
+        // Dias
+        for (let i = 0; i < 7; i++) {
+          const td = document.createElement('td');
+          td.setAttribute('data-label', labels[i+1]);
+          const conteudo = (cache?.[dir]?.[sem]?.[emp]?.[i] || []).join(', ');
+          td.textContent = conteudo;
+          tr.appendChild(td);
+        }
+        resumo.appendChild(tr);
+      });
+    }
+
+    selSemana.onchange = selDiretoria.onchange = async () => { await renderCalendario(); };
+    btnRecarregar.onclick = async () => { setStatus(null,'Recarregando...'); cache = {}; await renderCalendario(); setStatus('saved','Atualizado'); };
+
+    (async function init(){
+      gerarSemanas();
+      renderChips();
+      selSemana.selectedIndex = 0;
+      await renderCalendario();
+    })();
+  </script>
+</body>
+</html>
