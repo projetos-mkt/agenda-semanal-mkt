@@ -5,7 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dashboard Semanal 2025</title>
   <style>
-    :root { --gold:#b8860b; --soft:#fafafa; --line:#e6e6e6; }
+    :root {
+      --gold:#b8860b;
+      --soft:#fafafa;
+      --line:#e6e6e6;
+      --ctrlH: 38px; /* altura padrão dos controles */
+    }
     * { box-sizing: border-box; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#fff; color:#222; margin:0; padding:20px; }
     header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
@@ -18,9 +23,17 @@
 
     .container { display:flex; flex-direction:column; gap:18px; }
     .controls { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    select, input, button { padding:8px 10px; font-size:14px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    select, input, button { padding:8px 10px; font-size:14px; border:1px solid var(--line); border-radius:8px; background:#fff; height: var(--ctrlH); }
     button.primary { background:var(--gold); color:#000; border:none; font-weight:600; cursor:pointer; transition:.2s; }
     button.primary:hover { filter:brightness(1.1); }
+
+    /* botão "Sincronizar" com visual mais leve */
+    #btnRecarregar.primary {
+      background:transparent;
+      border:1px solid var(--gold);
+      color:#7a5a00;
+    }
+    #btnRecarregar.primary:hover { background:#fff6d1; }
 
     .chips { display:flex; flex-wrap:wrap; gap:8px; }
     .chip { padding:8px 12px; border-radius:20px; background:#f4f4f4; border:1px solid var(--line); cursor:pointer; transition:.15s; }
@@ -32,27 +45,31 @@
     .day h3 { margin:0 0 6px; font-size:15px; color:var(--gold); }
     .day ul { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
     .item { display:flex; align-items:center; justify-content:space-between; gap:8px; background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
-    .item button { border:none; background:transparent; color:#ef4444; cursor:pointer; font-size:14px; }
-    .add-action { display:flex; gap:6px; margin-top:8px; }
-    .add-action input { flex:1; }
+    .item button { border:none; background:transparent; color:#ef4444; cursor:pointer; font-size:14px; height:auto; }
 
-    /* ===== Tabela ===== */
-    .table-wrap { width:100%; overflow-x:auto; }
+    /* --- área de adicionar ação (fix + tamanho harmonizado) --- */
+    .add-action { display:flex; align-items:center; gap:6px; margin-top:8px; }
+    .add-action input {
+      flex:1 1 auto;
+      min-width:0;                 /* permite encolher no grid e não esconder o + */
+      height: var(--ctrlH);
+    }
+    .add-action .primary {
+      flex:0 0 var(--ctrlH);
+      width: var(--ctrlH);
+      height: var(--ctrlH);
+      padding:0;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      font-size:18px;
+      border-radius:8px;
+    }
+    /* --------------------------------------------------------- */
+
     table { width:100%; border-collapse:collapse; }
     th, td { border:1px solid var(--line); padding:8px; text-align:left; vertical-align:top; }
     th { background:#f9f9f9; color:var(--gold); position:sticky; top:0; }
-
-    /* Mobile: transformar tabela em cartões usando flexbox */
-    @media (max-width: 720px) {
-      thead { display:none; }
-      table, tbody, tr, td { display:block; width:100%; }
-      tbody { display:flex; flex-direction:column; gap:12px; }
-      tr { border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff; }
-      td { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; border:none; border-bottom:1px solid var(--line); padding:10px 12px; }
-      td:last-child { border-bottom:none; }
-      td::before { content: attr(data-label); font-weight:600; color:#555; }
-      td.emp { background:#f9f9f9; font-weight:700; color:#111; }
-    }
 
     @media (max-width: 1100px) {
       .calendar { grid-template-columns: repeat(3, 1fr); }
@@ -83,7 +100,7 @@
           <option value="Parcerias">Parcerias</option>
         </select>
       </label>
-      <button class="primary" id="btnRecarregar">Recarregar dados</button>
+      <button class="primary" id="btnRecarregar" title="Buscar do Firestore">Sincronizar</button>
     </div>
 
     <div class="chips" id="empreendimentos"></div>
@@ -92,23 +109,21 @@
 
     <div>
       <h2 style="color:var(--gold);margin:6px 0;">Quadro Resumo — Semana</h2>
-      <div class="table-wrap">
-        <table id="resumo">
-          <thead>
-            <tr>
-              <th>Empreendimento</th>
-              <th>Segunda</th>
-              <th>Terça</th>
-              <th>Quarta</th>
-              <th>Quinta</th>
-              <th>Sexta</th>
-              <th>Sábado</th>
-              <th>Domingo</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <table id="resumo">
+        <thead>
+          <tr>
+            <th>Empreendimento</th>
+            <th>Segunda</th>
+            <th>Terça</th>
+            <th>Quarta</th>
+            <th>Quinta</th>
+            <th>Sexta</th>
+            <th>Sábado</th>
+            <th>Domingo</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
 
@@ -292,33 +307,24 @@
       const sem = selSemana.value;
       const dir = selDiretoria.value;
       resumo.innerHTML = '';
-
-      const labels = ['Empreendimento','Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
-
       EMPREENDIMENTOS.forEach(emp => {
         const tr = document.createElement('tr');
-
-        // Empreendimento (primeira célula)
-        const tdEmp = document.createElement('td');
-        tdEmp.className = 'emp';
-        tdEmp.setAttribute('data-label', labels[0]);
-        tdEmp.innerHTML = `<strong>${emp}</strong>`;
-        tr.appendChild(tdEmp);
-
-        // Dias
+        tr.innerHTML = `<td><strong>${emp}</strong></td>`;
         for (let i = 0; i < 7; i++) {
-          const td = document.createElement('td');
-          td.setAttribute('data-label', labels[i+1]);
           const conteudo = (cache?.[dir]?.[sem]?.[emp]?.[i] || []).join(', ');
-          td.textContent = conteudo;
-          tr.appendChild(td);
+          tr.innerHTML += `<td>${conteudo}</td>`;
         }
         resumo.appendChild(tr);
       });
     }
 
     selSemana.onchange = selDiretoria.onchange = async () => { await renderCalendario(); };
-    btnRecarregar.onclick = async () => { setStatus(null,'Recarregando...'); cache = {}; await renderCalendario(); setStatus('saved','Atualizado'); };
+    btnRecarregar.onclick = async () => {
+      setStatus(null,'Sincronizando...');
+      cache = {};
+      await renderCalendario();
+      setStatus('saved','Atualizado');
+    };
 
     (async function init(){
       gerarSemanas();
